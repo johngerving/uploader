@@ -3,14 +3,17 @@ package server
 import (
 	"log"
 	"net/http"
+
+	"github.com/johngerving/uploader/repository"
 )
 
 func NewServer(
 	logger *log.Logger,
+	queries *repository.Queries,
 ) http.Handler {
 	mux := http.NewServeMux()
 
-	addRoutes(mux)
+	addRoutes(mux, logger, queries)
 
 	var handler http.Handler = mux
 
@@ -19,7 +22,10 @@ func NewServer(
 
 func addRoutes(
 	mux *http.ServeMux,
-	// logger *log.Logger,
+	logger *log.Logger,
+	queries *repository.Queries,
 ) {
-	mux.Handle("/healthz", handleHealth())
+	mux.Handle("GET /healthz", handleHealth())
+	mux.Handle("POST /uploads", handlePostUpload(logger, queries))
+	mux.Handle("POST /uploads/{id}/parts", handlePostPart(logger, queries))
 }

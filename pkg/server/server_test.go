@@ -1,25 +1,31 @@
-package main
+package server
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRun(t *testing.T) {
+func TestRunShutdown(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)
 
 	var stdout bytes.Buffer
-	go run(ctx, []string{}, nil, &stdout, &stdout)
+	args, err := NewArgs("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go Run(ctx, args, nil, &stdout, &stdout)
 
-	waitForReady(ctx, time.Duration(time.Second * 5), "http://localhost:8090/healthz")
+	waitForReady(ctx, time.Duration(time.Second*5), "http://localhost:8090/healthz")
 
 	cancel()
 
@@ -31,15 +37,38 @@ func TestRun(t *testing.T) {
 	startTime := time.Now()
 	for got != want {
 		if time.Since(startTime) >= timeout {
-			t.Fatalf("Timeout reached while waiting for shutdown")
+			t.Log("Timeout reached while waiting for shutdown\n")
+			break
 		}
 		time.Sleep(250 * time.Millisecond)
 
 		got = stdout.String()
 	}
 
-	
 	require.Equal(t, want, got)
+}
+
+func TestNewArgs(t *testing.T) {
+	tests := []struct {
+		description string
+		database    string
+		wantArgs    args
+		wantErr     error
+	}{
+		{"Default arguments", "", args{database: "disk"}, nil},
+		{"Specifying disk database", "disk", args{database: "disk"}, nil},
+		{"Specifying in-memory database", "memory", args{database: "memory"}, nil},
+		{"Invalid database argument", "test", args{}, errors.New("database type 'test' invalid - must be 'disk' or 'memory'")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			gotArgs, gotErr := NewArgs(tt.database)
+
+			require.Equal(t, tt.wantErr, gotErr)
+			require.Equal(t, tt.wantArgs, gotArgs)
+		})
+	}
 }
 
 // waitForReady calls the specified endpoint until it gets a 200
@@ -47,7 +76,7 @@ func TestRun(t *testing.T) {
 // reached.
 func waitForReady(
 	ctx context.Context,
-	timeout time.Duration, 
+	timeout time.Duration,
 	endpoint string,
 ) error {
 	client := http.Client{}
@@ -67,7 +96,9 @@ func waitForReady(
 		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Printf("Error making request: %s\n", err.Error())
+			continue
 		}
+
 		if resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
 			return nil

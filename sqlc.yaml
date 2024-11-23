@@ -7,3 +7,4 @@ sql:
       go:
         package: "repository"
         out: "repository"
+        emit_prepared_queries: true

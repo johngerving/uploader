@@ -14,7 +14,17 @@ INSERT INTO uploads (id) VALUES (?) RETURNING id
 `
 
 func (q *Queries) CreateUpload(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRowContext(ctx, createUpload, id)
+	row := q.queryRow(ctx, q.createUploadStmt, createUpload, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
+const findUploadById = `-- name: FindUploadById :one
+SELECT id FROM uploads WHERE id=?
+`
+
+func (q *Queries) FindUploadById(ctx context.Context, id string) (string, error) {
+	row := q.queryRow(ctx, q.findUploadByIdStmt, findUploadById, id)
 	err := row.Scan(&id)
 	return id, err
 }
