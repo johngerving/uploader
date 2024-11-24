@@ -16,6 +16,7 @@ import (
 
 	embed "github.com/johngerving/uploader"
 	"github.com/johngerving/uploader/repository"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type args struct {

@@ -9,6 +9,21 @@ import (
 	"context"
 )
 
+const createPart = `-- name: CreatePart :exec
+INSERT INTO parts (upload_id, id, data) VALUES (?, ?, ?)
+`
+
+type CreatePartParams struct {
+	UploadID string
+	ID       int64
+	Data     []byte
+}
+
+func (q *Queries) CreatePart(ctx context.Context, arg CreatePartParams) error {
+	_, err := q.exec(ctx, q.createPartStmt, createPart, arg.UploadID, arg.ID, arg.Data)
+	return err
+}
+
 const createUpload = `-- name: CreateUpload :one
 INSERT INTO uploads (id) VALUES (?) RETURNING id
 `

@@ -11,7 +11,7 @@ func handleHealth() http.Handler {
 			response := response{
 				Status: "up",
 			}
-			encode(w, r, 200, response)
+			encode(w, 200, response)
 		},
 	)
 }

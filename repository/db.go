@@ -24,6 +24,9 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.createPartStmt, err = db.PrepareContext(ctx, createPart); err != nil {
+		return nil, fmt.Errorf("error preparing query CreatePart: %w", err)
+	}
 	if q.createUploadStmt, err = db.PrepareContext(ctx, createUpload); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateUpload: %w", err)
 	}
@@ -35,6 +38,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.createPartStmt != nil {
+		if cerr := q.createPartStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createPartStmt: %w", cerr)
+		}
+	}
 	if q.createUploadStmt != nil {
 		if cerr := q.createUploadStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createUploadStmt: %w", cerr)
@@ -84,6 +92,7 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                 DBTX
 	tx                 *sql.Tx
+	createPartStmt     *sql.Stmt
 	createUploadStmt   *sql.Stmt
 	findUploadByIdStmt *sql.Stmt
 }
@@ -92,6 +101,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                 tx,
 		tx:                 tx,
+		createPartStmt:     q.createPartStmt,
 		createUploadStmt:   q.createUploadStmt,
 		findUploadByIdStmt: q.findUploadByIdStmt,
 	}

@@ -4,6 +4,12 @@
 
 package repository
 
+type Part struct {
+	ID       int64
+	UploadID string
+	Data     []byte
+}
+
 type Upload struct {
 	ID string
 }

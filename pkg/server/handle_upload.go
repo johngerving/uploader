@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -28,7 +29,38 @@ func handlePostUpload(logger *log.Logger, queries *repository.Queries) http.Hand
 				ID: uploadId,
 			}
 
-			encode(w, r, http.StatusOK, response)
+			encode(w, http.StatusOK, response)
+		},
+	)
+}
+
+func handleGetUpload(logger *log.Logger, queries *repository.Queries) http.Handler {
+	type response struct {
+		ID string `json:"id"`
+	}
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			id := r.PathValue("id")
+			if id == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			_, err := queries.FindUploadById(context.Background(), id)
+			if err == sql.ErrNoRows {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if err != nil {
+				logger.Printf("error finding upload with ID %v: %v", id, err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			resp := response{
+				ID: id,
+			}
+			encode(w, http.StatusOK, &resp)
 		},
 	)
 }
