@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +23,8 @@ func handlePostPart(logger *log.Logger, queries *repository.Queries) http.Handle
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			uploadId := r.PathValue("id")
-			partParam := r.URL.Query().Get("part")
+			partString := r.PathValue("part")
+
 			if uploadId == "" {
 				resp := responseError{
 					Message: "invalid 'id' path value",
@@ -29,30 +32,23 @@ func handlePostPart(logger *log.Logger, queries *repository.Queries) http.Handle
 				encode(w, http.StatusBadRequest, resp)
 				return
 			}
-			if partParam == "" {
+
+			part, err := strconv.Atoi(partString)
+			if err != nil || part < 1 {
 				resp := responseError{
-					Message: "missing query parameter 'part'",
+					Message: "invalid 'part' path value",
 				}
 				encode(w, http.StatusBadRequest, resp)
 				return
 			}
 
-			part, err := strconv.Atoi(partParam)
-			if err != nil {
-				resp := responseError{
-					Message: "invalid query parameter 'part'",
-				}
-				encode(w, http.StatusBadRequest, resp)
-				return
-			}
-
-			uploadId, err = queries.FindUploadById(context.Background(), uploadId)
+			upload, err := queries.FindUploadById(context.Background(), uploadId)
 			if err == sql.ErrNoRows {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
 			if err != nil {
-				logger.Printf("error getting row with ID %v: %v\n", uploadId, err)
+				logger.Printf("error getting row with ID %v: %v\n", upload.ID, err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -61,6 +57,30 @@ func handlePostPart(logger *log.Logger, queries *repository.Queries) http.Handle
 			if err != nil {
 				logger.Printf("error reading body: %v\n", err)
 				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			if len(body) == 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			md5Header := r.Header.Get("Content-MD5")
+			if md5Header == "" {
+				resp := responseError{
+					Message: "missing Content-MD5 header",
+				}
+				encode(w, http.StatusBadRequest, resp)
+				return
+			}
+
+			hash := md5.Sum(body)
+
+			if hex.EncodeToString(hash[:]) != md5Header {
+				resp := responseError{
+					Message: "Content-MD5 header does not match body MD5",
+				}
+				encode(w, http.StatusBadRequest, resp)
 				return
 			}
 

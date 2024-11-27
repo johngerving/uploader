@@ -11,5 +11,6 @@ type Part struct {
 }
 
 type Upload struct {
-	ID string
+	ID       string
+	Complete int64
 }

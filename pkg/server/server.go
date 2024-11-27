@@ -28,5 +28,6 @@ func addRoutes(
 	mux.Handle("GET /healthz", handleHealth())
 	mux.Handle("POST /uploads", handlePostUpload(logger, queries))
 	mux.Handle("GET /uploads/{id}", handleGetUpload(logger, queries))
-	mux.Handle("POST /uploads/{id}/parts", handlePostPart(logger, queries))
+	mux.Handle("POST /uploads/{id}/parts/{part}", handlePostPart(logger, queries))
+	mux.Handle("PUT /uploads/{id}", handlePutUpload(logger, queries))
 }

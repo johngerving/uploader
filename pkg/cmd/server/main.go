@@ -10,21 +10,6 @@ import (
 )
 
 func main() {
-
-	// http.HandleFunc("POST /upload", func(w http.ResponseWriter, req *http.Request) {
-	// 	id := uuid.New()
-
-	// 	_, err := queries.CreateUpload(context.Background(), id.String())
-	// 	if err != nil {
-	// 		log.Printf("error creating upload: %v\n", err)
-	// 		fmt.Fprintf(w, "error creating upload")
-	// 		return
-	// 	}
-	// 	fmt.Fprintf(w, "created upload with ID %v", id)
-	// })
-
-	// http.ListenAndServe(":8090", nil)
-
 	dbArg := flag.String("db", "disk", "location of the database, 'disk' or 'memory'")
 
 	// Create args from flags

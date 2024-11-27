@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.findUploadByIdStmt, err = db.PrepareContext(ctx, findUploadById); err != nil {
 		return nil, fmt.Errorf("error preparing query FindUploadById: %w", err)
 	}
+	if q.findUploadPartsByIdStmt, err = db.PrepareContext(ctx, findUploadPartsById); err != nil {
+		return nil, fmt.Errorf("error preparing query FindUploadPartsById: %w", err)
+	}
 	return &q, nil
 }
 
@@ -51,6 +54,11 @@ func (q *Queries) Close() error {
 	if q.findUploadByIdStmt != nil {
 		if cerr := q.findUploadByIdStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing findUploadByIdStmt: %w", cerr)
+		}
+	}
+	if q.findUploadPartsByIdStmt != nil {
+		if cerr := q.findUploadPartsByIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findUploadPartsByIdStmt: %w", cerr)
 		}
 	}
 	return err
@@ -90,19 +98,21 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                 DBTX
-	tx                 *sql.Tx
-	createPartStmt     *sql.Stmt
-	createUploadStmt   *sql.Stmt
-	findUploadByIdStmt *sql.Stmt
+	db                      DBTX
+	tx                      *sql.Tx
+	createPartStmt          *sql.Stmt
+	createUploadStmt        *sql.Stmt
+	findUploadByIdStmt      *sql.Stmt
+	findUploadPartsByIdStmt *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                 tx,
-		tx:                 tx,
-		createPartStmt:     q.createPartStmt,
-		createUploadStmt:   q.createUploadStmt,
-		findUploadByIdStmt: q.findUploadByIdStmt,
+		db:                      tx,
+		tx:                      tx,
+		createPartStmt:          q.createPartStmt,
+		createUploadStmt:        q.createUploadStmt,
+		findUploadByIdStmt:      q.findUploadByIdStmt,
+		findUploadPartsByIdStmt: q.findUploadPartsByIdStmt,
 	}
 }

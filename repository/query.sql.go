@@ -25,21 +25,50 @@ func (q *Queries) CreatePart(ctx context.Context, arg CreatePartParams) error {
 }
 
 const createUpload = `-- name: CreateUpload :one
-INSERT INTO uploads (id) VALUES (?) RETURNING id
+INSERT INTO uploads (id, complete) VALUES (?, 0) RETURNING id, complete
 `
 
-func (q *Queries) CreateUpload(ctx context.Context, id string) (string, error) {
+func (q *Queries) CreateUpload(ctx context.Context, id string) (Upload, error) {
 	row := q.queryRow(ctx, q.createUploadStmt, createUpload, id)
-	err := row.Scan(&id)
-	return id, err
+	var i Upload
+	err := row.Scan(&i.ID, &i.Complete)
+	return i, err
 }
 
 const findUploadById = `-- name: FindUploadById :one
-SELECT id FROM uploads WHERE id=?
+SELECT id, complete FROM uploads WHERE id=?
 `
 
-func (q *Queries) FindUploadById(ctx context.Context, id string) (string, error) {
+func (q *Queries) FindUploadById(ctx context.Context, id string) (Upload, error) {
 	row := q.queryRow(ctx, q.findUploadByIdStmt, findUploadById, id)
-	err := row.Scan(&id)
-	return id, err
+	var i Upload
+	err := row.Scan(&i.ID, &i.Complete)
+	return i, err
+}
+
+const findUploadPartsById = `-- name: FindUploadPartsById :many
+SELECT id from parts WHERE upload_id=? ORDER BY id ASC
+`
+
+func (q *Queries) FindUploadPartsById(ctx context.Context, uploadID string) ([]int64, error) {
+	rows, err := q.query(ctx, q.findUploadPartsByIdStmt, findUploadPartsById, uploadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

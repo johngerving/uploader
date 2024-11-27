@@ -3,8 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -15,8 +16,8 @@ import (
 
 func TestHandlePart(t *testing.T) {
 	type request struct {
-		queryParam string
-		body       []byte
+		suffix string
+		body   []byte
 	}
 	type errorResp struct {
 		Message string `json:"message"`
@@ -33,46 +34,37 @@ func TestHandlePart(t *testing.T) {
 			true,
 			[]request{
 				{
-					"?part=1",
+					"/1",
 					[]byte("hello world"),
 				},
 				{
-					"?part=2",
+					"/2",
 					[]byte("testing"),
 				},
 			},
 			[]int{http.StatusOK, http.StatusOK},
-			[]errorResp{{}, {}},
+			[]errorResp{
+				{
+					"^$",
+				},
+				{
+					"^$",
+				},
+			},
 		},
 		{
-			"Missing query params should result in a response error",
+			"Invalid part ID should result in a response error",
 			true,
 			[]request{
 				{
-					"",
+					"/bad",
 					[]byte("hello world"),
 				},
 			},
 			[]int{http.StatusBadRequest},
 			[]errorResp{
 				{
-					Message: "missing query parameter 'part'",
-				},
-			},
-		},
-		{
-			"Invalid query params should result in a response error",
-			true,
-			[]request{
-				{
-					"?part=bad",
-					[]byte("hello world"),
-				},
-			},
-			[]int{http.StatusBadRequest},
-			[]errorResp{
-				{
-					Message: "invalid query parameter 'part'",
+					Message: "invalid 'part' path value",
 				},
 			},
 		},
@@ -81,29 +73,35 @@ func TestHandlePart(t *testing.T) {
 			false,
 			[]request{
 				{
-					"?part=1",
+					"/1",
 					[]byte("hello world"),
 				},
 			},
 			[]int{http.StatusNotFound},
-			[]errorResp{{}},
+			[]errorResp{
+				{
+					"^$",
+				},
+			},
 		},
 		{
 			"Uploading duplicate part IDs should result in an error response",
 			true,
 			[]request{
 				{
-					"?part=1",
+					"/1",
 					[]byte("hello world"),
 				},
 				{
-					"?part=1",
+					"/1",
 					[]byte("test"),
 				},
 			},
 			[]int{http.StatusOK, http.StatusBadRequest},
 			[]errorResp{
-				{},
+				{
+					"^$",
+				},
 				{
 					"part 1 already exists for upload with ID .*",
 				},
@@ -155,10 +153,13 @@ func TestHandlePart(t *testing.T) {
 			}
 
 			for i, req := range tt.requests {
-				endpoint := "http://localhost:8090/uploads/" + uploadId + "/parts" + req.queryParam
+				hash := md5.Sum(req.body)
+
+				endpoint := "http://localhost:8090/uploads/" + uploadId + "/parts" + req.suffix
 				resp, err = client.R().
 					EnableTrace().
 					SetBody(req.body).
+					SetHeader("Content-MD5", hex.EncodeToString(hash[:])).
 					Post(endpoint)
 
 				if err != nil {
@@ -166,21 +167,101 @@ func TestHandlePart(t *testing.T) {
 				}
 
 				var respBody errorResp
-
-				if len(resp.Body()) > 0 {
-					err = json.Unmarshal(resp.Body(), &respBody)
-					if err != nil {
-						t.Fatal(err)
-					}
+				json.Unmarshal(resp.Body(), &respBody)
+				if tt.wantRespBodies[i].Message != "" {
+					require.Regexp(t, tt.wantRespBodies[i].Message, respBody.Message)
 				}
 
-				fmt.Println("i:", i)
-				fmt.Println("want:", tt.wantRespBodies[i])
-				fmt.Println("got:", respBody)
-
 				require.Equal(t, tt.wantStatusCodes[i], resp.StatusCode())
-				require.Regexp(t, tt.wantRespBodies[i], respBody)
 			}
+		})
+	}
+}
+
+func TestHandlePartHeaders(t *testing.T) {
+	tests := []struct {
+		description    string
+		body           []byte
+		md5Header      string
+		wantStatusCode int
+		wantRespBody   string
+	}{
+		{
+			"Normal request should return successfully",
+			[]byte("hello world"),
+			"5eb63bbbe01eeed093cb22bb8f5acdc3",
+			http.StatusOK,
+			"^$",
+		},
+		{
+			"Missing Content-MD5 header should result in an error response",
+			[]byte("hello world"),
+			"",
+			http.StatusBadRequest,
+			`{"message":"missing Content-MD5 header"}`,
+		},
+		{
+			"Incorrect Content-MD5 header should result in an error response",
+			[]byte("hello world"),
+			"5eb63bbbe01eeed093cb22bb8f5acdc2",
+			http.StatusBadRequest,
+			`{"message":"Content-MD5 header does not match body MD5"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			ctx := context.Background()
+			ctx, cancel := context.WithCancel(ctx)
+			t.Cleanup(cancel)
+
+			var stdout bytes.Buffer
+			args, err := NewArgs("memory")
+			if err != nil {
+				t.Fatal(err)
+			}
+			go Run(ctx, args, nil, &stdout, &stdout)
+
+			err = waitForReady(ctx, time.Duration(time.Second*5), "http://localhost:8090/healthz")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			client := resty.New()
+
+			var resp *resty.Response
+
+			resp, err = client.R().
+				Post("http://localhost:8090/uploads")
+
+			if resp.StatusCode() != http.StatusOK {
+				t.Fatal(err)
+			}
+
+			type uploadResp struct {
+				ID string `json:"id"`
+			}
+			var upload uploadResp
+			err = json.Unmarshal(resp.Body(), &upload)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			uploadId := upload.ID
+
+			endpoint := "http://localhost:8090/uploads/" + uploadId + "/parts/1"
+			resp, err = client.R().
+				EnableTrace().
+				SetBody(tt.body).
+				SetHeader("Content-MD5", tt.md5Header).
+				Post(endpoint)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			require.Equal(t, tt.wantStatusCode, resp.StatusCode())
+			require.Regexp(t, tt.wantRespBody, string(resp.Body()))
 		})
 	}
 }
